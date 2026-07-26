@@ -22,8 +22,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      const exceptionResponse = exception.getResponse();
+
       if (status === HttpStatus.BAD_REQUEST) {
-        const exceptionResponse = exception.getResponse();
         const message = this.extractValidationMessage(exceptionResponse);
         response.status(HttpStatus.BAD_REQUEST).json({
           success: false,
@@ -32,6 +33,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
         });
         return;
       }
+
+      if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null &&
+        'success' in exceptionResponse &&
+        'code' in exceptionResponse
+      ) {
+        response.status(status).json(exceptionResponse);
+        return;
+      }
+
+      const message = this.extractValidationMessage(exceptionResponse);
+      response.status(status).json({
+        success: false,
+        code:
+          status === HttpStatus.UNAUTHORIZED
+            ? ErrorCodes.TOKEN_EXPIRED
+            : status === HttpStatus.TOO_MANY_REQUESTS
+              ? ErrorCodes.TOO_MANY_REQUESTS
+              : ErrorCodes.INTERNAL,
+        message,
+      });
+      return;
     }
 
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({

@@ -1,12 +1,20 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { Observable } from 'rxjs';
+import { ErrorCodes } from '../codes';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { DomainException } from '../domain.exception';
 
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(
+    context: ExecutionContext,
+  ): boolean | Promise<boolean> | Observable<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -16,8 +24,16 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    // TODO(Task 4): enforce JWT when AuthModule / Passport strategy exists.
-    // Until then, allow all non-public routes through (passthrough stub).
-    return true;
+    return super.canActivate(context);
+  }
+
+  handleRequest<TUser>(err: Error | null, user: TUser): TUser {
+    if (err || !user) {
+      throw (
+        err ??
+        new DomainException(ErrorCodes.TOKEN_EXPIRED, 401, 'Unauthorized')
+      );
+    }
+    return user;
   }
 }
