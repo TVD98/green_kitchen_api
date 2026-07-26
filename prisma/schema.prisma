@@ -1,13 +1,98 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Prisma 7: connection URL lives in prisma.config.ts (not datasource url).
+// moduleFormat cjs required for NestJS CommonJS runtime.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AuthProvider {
+  email
+  google
+  facebook
+}
+
+enum OtpPurpose {
+  password_reset
+}
+
+model User {
+  id               String         @id @default(cuid())
+  email            String         @unique
+  passwordHash     String?
+  fullName         String?
+  avatarUrl        String?
+  provider         AuthProvider   @default(email)
+  providerId       String?
+  isLocked         Boolean        @default(false)
+  failedLoginCount Int            @default(0)
+  createdAt        DateTime       @default(now())
+  refreshTokens    RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  deviceId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tokenHash])
+  @@index([userId, deviceId])
+}
+
+model OtpSession {
+  id             String     @id @default(cuid())
+  email          String
+  otpHash        String
+  purpose        OtpPurpose
+  attempts       Int        @default(0)
+  expiresAt      DateTime
+  resetTokenHash String?
+  consumedAt     DateTime?
+  createdAt      DateTime   @default(now())
+
+  @@index([email])
+}
+
+model Ingredient {
+  id            String   @id @default(cuid())
+  canonicalName String   @unique
+  category      String
+  aliases       String[]
+}
+
+model Recipe {
+  id           String   @id @default(cuid())
+  title        String
+  slug         String   @unique
+  description  String
+  timeMinutes  Int
+  difficulty   String
+  servings     Int
+  tags         String[]
+  steps        Json
+  ingredients  Json
+  nutrition    Json?
+  source       String   @default("gemini")
+  createdAt    DateTime @default(now())
+
+  @@index([title])
+}
+
+model PantryQuery {
+  id              String   @id @default(cuid())
+  userId          String?
+  ingredientHash  String   @unique
+  ingredientIds   String[]
+  resultRecipeIds String[]
+  createdAt       DateTime @default(now())
 }
