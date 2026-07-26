@@ -118,7 +118,22 @@ export class PantryService {
     filters?: PantrySearchFiltersDto,
   ): string {
     const payload =
-      sortedCanonicalIds.join('|') + JSON.stringify(filters ?? {});
+      sortedCanonicalIds.join('|') + this.serializeFilters(filters);
     return createHash('sha256').update(payload).digest('hex');
+  }
+
+  /** Stable JSON so key insertion order cannot split the cache. */
+  private serializeFilters(filters?: PantrySearchFiltersDto): string {
+    if (!filters) {
+      return '{}';
+    }
+    const ordered: Record<string, unknown> = {};
+    for (const key of Object.keys(filters).sort()) {
+      const value = (filters as Record<string, unknown>)[key];
+      if (value !== undefined) {
+        ordered[key] = value;
+      }
+    }
+    return JSON.stringify(ordered);
   }
 }
