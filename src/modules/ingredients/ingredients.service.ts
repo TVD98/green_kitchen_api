@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Ingredient } from '../../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type IngredientDto = {
@@ -44,5 +45,48 @@ export class IngredientsService {
       category: row.category,
       aliases: row.aliases,
     }));
+  }
+
+  async findByNameOrAlias(name: string): Promise<Ingredient | null> {
+    const query = name.trim();
+    if (!query) {
+      return null;
+    }
+
+    const rows = await this.prisma.$queryRaw<Ingredient[]>`
+      SELECT id, "canonicalName", category, aliases
+      FROM "Ingredient"
+      WHERE lower("canonicalName") = lower(${query})
+         OR EXISTS (
+           SELECT 1 FROM unnest(aliases) AS alias
+           WHERE lower(alias) = lower(${query})
+         )
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async upsertCanonical(
+    canonicalName: string,
+    alias?: string,
+  ): Promise<Ingredient> {
+    const existing = await this.findByNameOrAlias(canonicalName);
+    if (existing) {
+      return existing;
+    }
+
+    const aliases =
+      alias && alias.trim().toLowerCase() !== canonicalName.trim().toLowerCase()
+        ? [alias.trim()]
+        : [];
+
+    return this.prisma.ingredient.create({
+      data: {
+        canonicalName: canonicalName.trim(),
+        category: 'other',
+        aliases,
+      },
+    });
   }
 }

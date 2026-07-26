@@ -7,7 +7,10 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
+import { GeminiModule } from './modules/gemini/gemini.module';
 import { IngredientsModule } from './modules/ingredients/ingredients.module';
+import { PantryModule } from './modules/pantry/pantry.module';
+import { RecipesModule } from './modules/recipes/recipes.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -24,6 +27,9 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     AuthModule,
     IngredientsModule,
+    GeminiModule,
+    RecipesModule,
+    PantryModule,
   ],
   controllers: [AppController],
   providers: [
