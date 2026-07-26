@@ -168,6 +168,63 @@ describe('Auth (e2e)', () => {
     expect(bad.body.code).toBe('ERR_INVALID_CREDENTIALS');
   });
 
+  it('locks account after MAX_LOGIN_ATTEMPTS; login and refresh return ERR_ACCOUNT_LOCKED', async () => {
+    const maxAttempts = Number(process.env.MAX_LOGIN_ATTEMPTS ?? '5');
+    const signup = await request(app.getHttpServer())
+      .post('/api/v1/auth/signup')
+      .send({
+        email: 'locked@example.com',
+        password: 'Password1!',
+        device_info: deviceInfo,
+      })
+      .expect(201);
+    const refreshToken = signup.body.data.tokens.refresh_token as string;
+
+    for (let i = 0; i < maxAttempts - 1; i++) {
+      const attempt = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'locked@example.com',
+          password: 'WrongPass1!',
+          device_id: 'dev1',
+        })
+        .expect(401);
+      expect(attempt.body.code).toBe('ERR_INVALID_CREDENTIALS');
+    }
+
+    const lockAttempt = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'locked@example.com',
+        password: 'WrongPass1!',
+        device_id: 'dev1',
+      })
+      .expect(403);
+    expect(lockAttempt.body.success).toBe(false);
+    expect(lockAttempt.body.code).toBe('ERR_ACCOUNT_LOCKED');
+
+    const lockedLogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'locked@example.com',
+        password: 'Password1!',
+        device_id: 'dev1',
+      })
+      .expect(403);
+    expect(lockedLogin.body.success).toBe(false);
+    expect(lockedLogin.body.code).toBe('ERR_ACCOUNT_LOCKED');
+
+    const lockedRefresh = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh-token')
+      .send({
+        refresh_token: refreshToken,
+        device_id: 'dev1',
+      })
+      .expect(403);
+    expect(lockedRefresh.body.success).toBe(false);
+    expect(lockedRefresh.body.code).toBe('ERR_ACCOUNT_LOCKED');
+  });
+
   it('resets password via forgot → verify OTP → reset', async () => {
     const signup = await request(app.getHttpServer())
       .post('/api/v1/auth/signup')

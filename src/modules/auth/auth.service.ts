@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
-import { AuthProvider, OtpPurpose, User } from '../../../generated/prisma/client';
+import {
+  AuthProvider,
+  OtpPurpose,
+  Prisma,
+  User,
+} from '../../../generated/prisma/client';
 import { AuthCodes, ErrorCodes } from '../../common/codes';
 import { DomainException } from '../../common/domain.exception';
 import { UsersService } from '../users/users.service';
@@ -53,7 +58,19 @@ export class AuthService {
       throw new DomainException(ErrorCodes.USER_EXISTS, 400);
     }
 
-    const user = await this.users.createEmailUser(email, dto.password);
+    let user: User;
+    try {
+      user = await this.users.createEmailUser(email, dto.password);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new DomainException(ErrorCodes.USER_EXISTS, 400);
+      }
+      throw err;
+    }
+
     const tokens = await this.tokens.issuePair(
       user.id,
       dto.device_info.device_id,
@@ -78,6 +95,7 @@ export class AuthService {
     }
 
     if (user.isLocked) {
+      await this.tokens.revokeAllForUser(user.id);
       throw new DomainException(ErrorCodes.ACCOUNT_LOCKED, 403);
     }
 
@@ -86,6 +104,7 @@ export class AuthService {
       const updated = await this.users.incrementFailedLogin(user.id);
       if (updated.failedLoginCount >= this.maxLoginAttempts()) {
         await this.users.lockAccount(user.id);
+        await this.tokens.revokeAllForUser(user.id);
         throw new DomainException(ErrorCodes.ACCOUNT_LOCKED, 403);
       }
       throw new DomainException(ErrorCodes.INVALID_CREDENTIALS, 401);

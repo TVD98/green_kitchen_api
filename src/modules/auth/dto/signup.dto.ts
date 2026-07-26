@@ -22,7 +22,7 @@ export class SignupDto {
   @MaxLength(32)
   @Matches(PASSWORD_REGEX, {
     message:
-      'password must be 8–32 chars with upper, lower, digit, and special (!@#$%^&*)',
+      'password must be 8-32 chars with upper, lower, digit, and special (!@#$%^&*)',
   })
   password!: string;
 

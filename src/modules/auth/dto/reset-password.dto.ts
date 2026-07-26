@@ -18,7 +18,7 @@ export class ResetPasswordDto {
   @MaxLength(32)
   @Matches(PASSWORD_REGEX, {
     message:
-      'new_password must be 8–32 chars with upper, lower, digit, and special (!@#$%^&*)',
+      'new_password must be 8-32 chars with upper, lower, digit, and special (!@#$%^&*)',
   })
   new_password!: string;
 }

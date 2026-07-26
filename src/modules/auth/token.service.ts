@@ -91,16 +91,26 @@ export class TokenService {
     deviceId: string,
   ): Promise<AccessTokenOnly> {
     const tokenHash = this.hashToken(refreshToken);
+    // Do not filter revokedAt here — locked accounts must still map to
+    // ERR_ACCOUNT_LOCKED even after their refresh rows were revoked.
     const stored = await this.prisma.refreshToken.findFirst({
       where: {
         tokenHash,
         deviceId,
-        revokedAt: null,
       },
       include: { user: true },
     });
 
     if (!stored || stored.expiresAt.getTime() <= Date.now()) {
+      throw new DomainException(ErrorCodes.TOKEN_EXPIRED, 401);
+    }
+
+    if (stored.user.isLocked) {
+      await this.revokeAllForUser(stored.userId);
+      throw new DomainException(ErrorCodes.ACCOUNT_LOCKED, 403);
+    }
+
+    if (stored.revokedAt !== null) {
       throw new DomainException(ErrorCodes.TOKEN_EXPIRED, 401);
     }
 
