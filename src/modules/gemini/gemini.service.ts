@@ -56,6 +56,7 @@ export class GeminiService {
       const parsed = JSON.parse(text) as { names?: unknown };
       if (
         !Array.isArray(parsed.names) ||
+        parsed.names.length !== names.length ||
         !parsed.names.every((n) => typeof n === 'string')
       ) {
         throw new DomainException(
@@ -150,8 +151,23 @@ Return JSON with a "recipes" array matching the schema.`,
         r.difficulty === 'hard') &&
       typeof r.servings === 'number' &&
       Array.isArray(r.tags) &&
+      r.tags.every((t) => typeof t === 'string') &&
       Array.isArray(r.steps) &&
-      Array.isArray(r.ingredients)
+      r.steps.every(
+        (s) =>
+          typeof s === 'object' &&
+          s !== null &&
+          typeof (s as { order?: unknown }).order === 'number' &&
+          typeof (s as { text?: unknown }).text === 'string',
+      ) &&
+      Array.isArray(r.ingredients) &&
+      r.ingredients.every(
+        (ing) =>
+          typeof ing === 'object' &&
+          ing !== null &&
+          typeof (ing as { name?: unknown }).name === 'string' &&
+          typeof (ing as { quantity?: unknown }).quantity === 'string',
+      )
     );
   }
 

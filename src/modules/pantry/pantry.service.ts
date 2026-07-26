@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { Ingredient } from '../../../generated/prisma/client';
+import { Ingredient, Prisma } from '../../../generated/prisma/client';
 import { ErrorCodes } from '../../common/codes';
 import { DomainException } from '../../common/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -52,14 +52,29 @@ export class PantryService {
     );
     const saved = await this.recipes.persistGenerated(generated);
 
-    await this.prisma.pantryQuery.create({
-      data: {
-        userId: userId ?? null,
-        ingredientHash: hash,
-        ingredientIds: canonicalIds,
-        resultRecipeIds: saved.map((r) => r.id),
-      },
-    });
+    try {
+      await this.prisma.pantryQuery.create({
+        data: {
+          userId: userId ?? null,
+          ingredientHash: hash,
+          ingredientIds: canonicalIds,
+          resultRecipeIds: saved.map((r) => r.id),
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const winner = await this.prisma.pantryQuery.findUnique({
+          where: { ingredientHash: hash },
+        });
+        if (winner) {
+          return this.recipes.findByIds(winner.resultRecipeIds);
+        }
+      }
+      throw err;
+    }
 
     return saved;
   }
