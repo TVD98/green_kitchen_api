@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
+import { IngredientsModule } from './modules/ingredients/ingredients.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -22,6 +23,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     UsersModule,
     AuthModule,
+    IngredientsModule,
   ],
   controllers: [AppController],
   providers: [
