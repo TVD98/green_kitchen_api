@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { User } from '../../../generated/prisma/client';
+import { createHash } from 'crypto';
+import { AuthProvider, OtpPurpose, User } from '../../../generated/prisma/client';
 import { AuthCodes, ErrorCodes } from '../../common/codes';
 import { DomainException } from '../../common/domain.exception';
 import { UsersService } from '../users/users.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignupDto } from './dto/signup.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { OtpService } from './otp.service';
 import { TokenService } from './token.service';
 
 type PublicUser = {
@@ -23,6 +29,7 @@ export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokenService,
+    private readonly otp: OtpService,
     private readonly config: ConfigService,
   ) {}
 
@@ -37,6 +44,33 @@ export class AuthService {
 
   private maxLoginAttempts(): number {
     return Number(this.config.getOrThrow<string>('MAX_LOGIN_ATTEMPTS'));
+  }
+
+  private extractEmailClaim(idToken: string): string | null {
+    const parts = idToken.split('.');
+    if (parts.length === 3) {
+      try {
+        const payload = JSON.parse(
+          Buffer.from(parts[1], 'base64url').toString('utf8'),
+        ) as { email?: unknown };
+        if (typeof payload.email === 'string' && payload.email.includes('@')) {
+          return payload.email.trim().toLowerCase();
+        }
+      } catch {
+        // stub: ignore malformed JWT claims
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(idToken) as { email?: unknown };
+      if (typeof parsed.email === 'string' && parsed.email.includes('@')) {
+        return parsed.email.trim().toLowerCase();
+      }
+    } catch {
+      // not JSON
+    }
+
+    return null;
   }
 
   async signup(dto: SignupDto) {
@@ -97,6 +131,60 @@ export class AuthService {
         user: this.mapUser(user),
         tokens,
       },
+    };
+  }
+
+  async socialLogin(dto: SocialLoginDto) {
+    const idToken = dto.id_token?.trim() ?? '';
+    if (!idToken || idToken === 'fail') {
+      throw new DomainException(ErrorCodes.SOCIAL_AUTH_FAILED, 401);
+    }
+
+    const provider =
+      dto.provider === 'google' ? AuthProvider.google : AuthProvider.facebook;
+    const providerId = createHash('sha256').update(idToken).digest('hex');
+    const claimedEmail = this.extractEmailClaim(idToken);
+    const email =
+      claimedEmail ??
+      `${dto.provider}_${providerId.slice(0, 16)}@social.greenkitchen.app`;
+
+    const user = await this.users.upsertSocialUser(provider, providerId, email);
+    const tokens = await this.tokens.issuePair(
+      user.id,
+      dto.device_info.device_id,
+      user.email,
+    );
+
+    return {
+      code: AuthCodes.LOGIN_SUCCESS,
+      data: {
+        user: this.mapUser(user),
+        tokens,
+      },
+    };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    return this.otp.createSession(
+      dto.email,
+      OtpPurpose.password_reset,
+    );
+  }
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    const data = await this.otp.verify(
+      dto.session_id,
+      dto.otp_code,
+      OtpPurpose.password_reset,
+    );
+    return { code: 'OK', data };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    await this.otp.consumeResetToken(dto.reset_token, dto.new_password);
+    return {
+      code: AuthCodes.PASSWORD_RESET_SUCCESS,
+      data: null,
     };
   }
 

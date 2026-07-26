@@ -46,4 +46,52 @@ export class UsersService {
       data: { failedLoginCount: 0 },
     });
   }
+
+  findByProvider(
+    provider: AuthProvider,
+    providerId: string,
+  ): Promise<User | null> {
+    return this.prisma.user.findFirst({
+      where: { provider, providerId },
+    });
+  }
+
+  async upsertSocialUser(
+    provider: AuthProvider,
+    providerId: string,
+    email: string,
+  ): Promise<User> {
+    const existing = await this.findByProvider(provider, providerId);
+    if (existing) {
+      return existing;
+    }
+
+    const byEmail = await this.findByEmail(email);
+    if (byEmail) {
+      return this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: { provider, providerId },
+      });
+    }
+
+    return this.prisma.user.create({
+      data: {
+        email,
+        provider,
+        providerId,
+      },
+    });
+  }
+
+  async updatePassword(userId: string, password: string): Promise<User> {
+    const passwordHash = await bcrypt.hash(password, 10);
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        failedLoginCount: 0,
+        isLocked: false,
+      },
+    });
+  }
 }

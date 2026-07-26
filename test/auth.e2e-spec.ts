@@ -33,8 +33,21 @@ describe('Auth (e2e)', () => {
 
     prisma = app.get(PrismaService);
     await prisma.refreshToken.deleteMany();
+    await prisma.otpSession.deleteMany({
+      where: {
+        OR: [
+          { email: { endsWith: '@example.com' } },
+          { email: { endsWith: '@social.greenkitchen.app' } },
+        ],
+      },
+    });
     await prisma.user.deleteMany({
-      where: { email: { endsWith: '@example.com' } },
+      where: {
+        OR: [
+          { email: { endsWith: '@example.com' } },
+          { email: { endsWith: '@social.greenkitchen.app' } },
+        ],
+      },
     });
   });
 
@@ -153,5 +166,107 @@ describe('Auth (e2e)', () => {
       .expect(401);
     expect(bad.body.success).toBe(false);
     expect(bad.body.code).toBe('ERR_INVALID_CREDENTIALS');
+  });
+
+  it('resets password via forgot → verify OTP → reset', async () => {
+    const signup = await request(app.getHttpServer())
+      .post('/api/v1/auth/signup')
+      .send({
+        email: 'reset@example.com',
+        password: 'Password1!',
+        device_info: deviceInfo,
+      })
+      .expect(201);
+
+    const oldRefresh = signup.body.data.tokens.refresh_token as string;
+
+    const forgot = await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'reset@example.com' })
+      .expect(200);
+    expect(forgot.body.success).toBe(true);
+    expect(forgot.body.code).toBe('OTP_SENT');
+    expect(forgot.body.data.session_id).toBeDefined();
+    expect(forgot.body.data.expire_in_seconds).toBeDefined();
+    expect(forgot.body.data.resend_after_seconds).toBeDefined();
+    expect(forgot.body.data.dev_otp).toMatch(/^\d{4}$/);
+
+    const verify = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: forgot.body.data.session_id,
+        otp_code: forgot.body.data.dev_otp,
+        purpose: 'password_reset',
+      })
+      .expect(200);
+    expect(verify.body.success).toBe(true);
+    expect(verify.body.data.reset_token).toBeDefined();
+
+    const reset = await request(app.getHttpServer())
+      .post('/api/v1/auth/reset-password')
+      .send({
+        reset_token: verify.body.data.reset_token,
+        new_password: 'NewPass1!',
+      })
+      .expect(200);
+    expect(reset.body.success).toBe(true);
+    expect(reset.body.code).toBe('PASSWORD_RESET_SUCCESS');
+
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'reset@example.com',
+        password: 'NewPass1!',
+        device_id: 'dev1',
+      })
+      .expect(200);
+    expect(login.body.code).toBe('LOGIN_SUCCESS');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh-token')
+      .send({
+        refresh_token: oldRefresh,
+        device_id: 'dev1',
+      })
+      .expect(401);
+  });
+
+  it('social-login stub issues session; fail token is rejected', async () => {
+    const ok = await request(app.getHttpServer())
+      .post('/api/v1/auth/social-login')
+      .send({
+        provider: 'google',
+        id_token: 'stub-token-ok',
+        device_info: deviceInfo,
+      })
+      .expect(200);
+    expect(ok.body.success).toBe(true);
+    expect(ok.body.code).toBe('LOGIN_SUCCESS');
+    expect(ok.body.data.user.email).toMatch(/@social\.greenkitchen\.app$/);
+    expect(ok.body.data.tokens.access_token).toBeDefined();
+    expect(ok.body.data.tokens.refresh_token).toBeDefined();
+
+    const fail = await request(app.getHttpServer())
+      .post('/api/v1/auth/social-login')
+      .send({
+        provider: 'google',
+        id_token: 'fail',
+        device_info: deviceInfo,
+      })
+      .expect(401);
+    expect(fail.body.success).toBe(false);
+    expect(fail.body.code).toBe('ERR_SOCIAL_AUTH_FAILED');
+  });
+
+  it('forgot-password returns OTP_SENT for unknown email (no enumeration)', async () => {
+    const forgot = await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'nobody@example.com' })
+      .expect(200);
+    expect(forgot.body.success).toBe(true);
+    expect(forgot.body.code).toBe('OTP_SENT');
+    expect(forgot.body.data.session_id).toBeDefined();
+    expect(forgot.body.data.expire_in_seconds).toBeDefined();
+    expect(forgot.body.data.resend_after_seconds).toBeDefined();
   });
 });
