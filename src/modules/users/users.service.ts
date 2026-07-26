@@ -66,14 +66,7 @@ export class UsersService {
       return existing;
     }
 
-    const byEmail = await this.findByEmail(email);
-    if (byEmail) {
-      return this.prisma.user.update({
-        where: { id: byEmail.id },
-        data: { provider, providerId },
-      });
-    }
-
+    // Never attach provider identity to an existing email/password user.
     return this.prisma.user.create({
       data: {
         email,

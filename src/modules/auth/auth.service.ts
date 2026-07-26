@@ -46,33 +46,6 @@ export class AuthService {
     return Number(this.config.getOrThrow<string>('MAX_LOGIN_ATTEMPTS'));
   }
 
-  private extractEmailClaim(idToken: string): string | null {
-    const parts = idToken.split('.');
-    if (parts.length === 3) {
-      try {
-        const payload = JSON.parse(
-          Buffer.from(parts[1], 'base64url').toString('utf8'),
-        ) as { email?: unknown };
-        if (typeof payload.email === 'string' && payload.email.includes('@')) {
-          return payload.email.trim().toLowerCase();
-        }
-      } catch {
-        // stub: ignore malformed JWT claims
-      }
-    }
-
-    try {
-      const parsed = JSON.parse(idToken) as { email?: unknown };
-      if (typeof parsed.email === 'string' && parsed.email.includes('@')) {
-        return parsed.email.trim().toLowerCase();
-      }
-    } catch {
-      // not JSON
-    }
-
-    return null;
-  }
-
   async signup(dto: SignupDto) {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.users.findByEmail(email);
@@ -142,11 +115,9 @@ export class AuthService {
 
     const provider =
       dto.provider === 'google' ? AuthProvider.google : AuthProvider.facebook;
+    // Stub never trusts unverified email claims — synthetic address only.
     const providerId = createHash('sha256').update(idToken).digest('hex');
-    const claimedEmail = this.extractEmailClaim(idToken);
-    const email =
-      claimedEmail ??
-      `${dto.provider}_${providerId.slice(0, 16)}@social.greenkitchen.app`;
+    const email = `${dto.provider}_${providerId.slice(0, 16)}@social.greenkitchen.app`;
 
     const user = await this.users.upsertSocialUser(provider, providerId, email);
     const tokens = await this.tokens.issuePair(

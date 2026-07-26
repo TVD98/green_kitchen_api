@@ -269,4 +269,154 @@ describe('Auth (e2e)', () => {
     expect(forgot.body.data.expire_in_seconds).toBeDefined();
     expect(forgot.body.data.resend_after_seconds).toBeDefined();
   });
+
+  it('verify-otp returns ERR_INVALID_OTP for wrong code and unknown session alike', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/signup')
+      .send({
+        email: 'otp-enum@example.com',
+        password: 'Password1!',
+        device_info: deviceInfo,
+      })
+      .expect(201);
+
+    const knownForgot = await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'otp-enum@example.com' })
+      .expect(200);
+
+    const unknownForgot = await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'ghost-otp@example.com' })
+      .expect(200);
+
+    const wrongCode =
+      knownForgot.body.data.dev_otp === '0000' ? '1111' : '0000';
+    const wrongOtp = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: knownForgot.body.data.session_id,
+        otp_code: wrongCode,
+        purpose: 'password_reset',
+      })
+      .expect(400);
+    expect(wrongOtp.body.success).toBe(false);
+    expect(wrongOtp.body.code).toBe('ERR_INVALID_OTP');
+
+    const unknownSessionWrong = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: unknownForgot.body.data.session_id,
+        otp_code: '0000',
+        purpose: 'password_reset',
+      })
+      .expect(400);
+    expect(unknownSessionWrong.body.success).toBe(false);
+    expect(unknownSessionWrong.body.code).toBe('ERR_INVALID_OTP');
+
+    const missingSession = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: 'clxxxxxxxxxxxxxxxxxxxxxx',
+        otp_code: '1234',
+        purpose: 'password_reset',
+      })
+      .expect(400);
+    expect(missingSession.body.success).toBe(false);
+    expect(missingSession.body.code).toBe('ERR_INVALID_OTP');
+  });
+
+  it('rejects OTP reuse after successful verify; reset_token still works', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/signup')
+      .send({
+        email: 'otp-once@example.com',
+        password: 'Password1!',
+        device_info: deviceInfo,
+      })
+      .expect(201);
+
+    const forgot = await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'otp-once@example.com' })
+      .expect(200);
+
+    const verify = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: forgot.body.data.session_id,
+        otp_code: forgot.body.data.dev_otp,
+        purpose: 'password_reset',
+      })
+      .expect(200);
+    const resetToken = verify.body.data.reset_token as string;
+
+    const reuse = await request(app.getHttpServer())
+      .post('/api/v1/auth/verify-otp')
+      .send({
+        session_id: forgot.body.data.session_id,
+        otp_code: forgot.body.data.dev_otp,
+        purpose: 'password_reset',
+      })
+      .expect(400);
+    expect(reuse.body.success).toBe(false);
+    expect(reuse.body.code).toBe('ERR_INVALID_OTP');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/reset-password')
+      .send({
+        reset_token: resetToken,
+        new_password: 'OncePass1!',
+      })
+      .expect(200);
+
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'otp-once@example.com',
+        password: 'OncePass1!',
+        device_id: 'dev1',
+      })
+      .expect(200);
+    expect(login.body.code).toBe('LOGIN_SUCCESS');
+  });
+
+  it('social-login stub does not take over an existing email user', async () => {
+    const signup = await request(app.getHttpServer())
+      .post('/api/v1/auth/signup')
+      .send({
+        email: 'victim@example.com',
+        password: 'Password1!',
+        device_info: deviceInfo,
+      })
+      .expect(201);
+    const victimId = signup.body.data.user.id as string;
+
+    // Claim victim email in stub token payload — must not attach to password account.
+    const claimToken = Buffer.from(
+      JSON.stringify({ email: 'victim@example.com' }),
+    ).toString('utf8');
+
+    const social = await request(app.getHttpServer())
+      .post('/api/v1/auth/social-login')
+      .send({
+        provider: 'google',
+        id_token: claimToken,
+        device_info: deviceInfo,
+      })
+      .expect(200);
+    expect(social.body.code).toBe('LOGIN_SUCCESS');
+    expect(social.body.data.user.email).toMatch(/@social\.greenkitchen\.app$/);
+    expect(social.body.data.user.id).not.toBe(victimId);
+
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'victim@example.com',
+        password: 'Password1!',
+        device_id: 'dev1',
+      })
+      .expect(200);
+    expect(login.body.data.user.id).toBe(victimId);
+  });
 });

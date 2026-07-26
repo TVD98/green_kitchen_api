@@ -57,12 +57,24 @@ export class OtpService {
     const expireInSeconds = this.ttlSeconds();
     const resendAfterSeconds = this.resendSeconds();
     const user = await this.users.findByEmail(normalized);
+    const expiresAt = new Date(Date.now() + expireInSeconds * 1000);
 
+    // Always persist a session so verify behavior cannot enumerate account existence.
+    // Unknown emails get an unguessable otpHash and never receive/log a real OTP.
     if (!user) {
+      const session = await this.prisma.otpSession.create({
+        data: {
+          email: normalized,
+          otpHash: this.hash(randomBytes(32).toString('hex')),
+          purpose,
+          expiresAt,
+        },
+      });
+
       return {
         code: AuthCodes.OTP_SENT,
         data: {
-          session_id: randomBytes(16).toString('hex'),
+          session_id: session.id,
           expire_in_seconds: expireInSeconds,
           resend_after_seconds: resendAfterSeconds,
         },
@@ -75,7 +87,7 @@ export class OtpService {
         email: normalized,
         otpHash: this.hash(otp),
         purpose,
-        expiresAt: new Date(Date.now() + expireInSeconds * 1000),
+        expiresAt,
       },
     });
 
@@ -101,9 +113,17 @@ export class OtpService {
       where: { id: sessionId },
     });
 
+    // Missing / wrong-purpose / already-verified OTP → same code as wrong OTP
+    // so callers cannot distinguish unknown emails or reused codes by error shape.
     if (
       !session ||
       session.purpose !== purpose ||
+      session.resetTokenHash
+    ) {
+      throw new DomainException(ErrorCodes.INVALID_OTP, 400);
+    }
+
+    if (
       session.consumedAt ||
       session.expiresAt.getTime() <= Date.now() ||
       session.attempts >= MAX_OTP_ATTEMPTS
@@ -123,6 +143,8 @@ export class OtpService {
     }
 
     const resetToken = randomBytes(32).toString('hex');
+    // Setting resetTokenHash marks OTP as single-use; consumeResetToken still
+    // accepts unconsumed sessions that already have resetTokenHash.
     await this.prisma.otpSession.update({
       where: { id: session.id },
       data: { resetTokenHash: this.hash(resetToken) },

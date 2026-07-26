@@ -1,10 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-  IsIn,
-  IsNotEmpty,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsIn, IsString, ValidateNested } from 'class-validator';
 import { DeviceInfoDto } from './device-info.dto';
 
 export class SocialLoginDto {
