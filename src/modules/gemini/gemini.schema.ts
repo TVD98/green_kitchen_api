@@ -79,3 +79,22 @@ export const NORMALIZE_INGREDIENTS_SCHEMA: ResponseSchema = {
   },
   required: ['names'],
 };
+
+export const DISCOVERY_PROMPT_SCHEMA: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    ingredients: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+    },
+    cravings: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+    },
+    dietary_notes: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+    },
+  },
+  required: ['ingredients', 'cravings', 'dietary_notes'],
+};

@@ -22,17 +22,20 @@ enum OtpPurpose {
 }
 
 model User {
-  id               String         @id @default(cuid())
-  email            String         @unique
+  id               String            @id @default(cuid())
+  email            String            @unique
   passwordHash     String?
   fullName         String?
   avatarUrl        String?
-  provider         AuthProvider   @default(email)
+  provider         AuthProvider      @default(email)
   providerId       String?
-  isLocked         Boolean        @default(false)
-  failedLoginCount Int            @default(0)
-  createdAt        DateTime       @default(now())
+  isLocked         Boolean           @default(false)
+  failedLoginCount Int               @default(0)
+  createdAt        DateTime          @default(now())
   refreshTokens    RefreshToken[]
+  preferences      UserPreferences?
+  allergies        UserAllergy[]
+  discoveryQueries DiscoveryQuery[]
 }
 
 model RefreshToken {
@@ -64,10 +67,32 @@ model OtpSession {
 }
 
 model Ingredient {
-  id            String   @id @default(cuid())
-  canonicalName String   @unique
+  id            String        @id @default(cuid())
+  canonicalName String        @unique
   category      String
   aliases       String[]
+  allergies     UserAllergy[]
+}
+
+model UserPreferences {
+  userId              String   @id
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dietaryStyle        String?
+  spiceLevel          String?
+  cuisinePreferences  String[] @default([])
+  dislikedIngredients String[] @default([])
+  healthGoals         String[] @default([])
+  updatedAt           DateTime @updatedAt
+}
+
+model UserAllergy {
+  userId       String
+  ingredientId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, ingredientId])
 }
 
 model Recipe {
@@ -93,6 +118,18 @@ model PantryQuery {
   userId          String?
   ingredientHash  String   @unique
   ingredientIds   String[]
+  resultRecipeIds String[]
+  createdAt       DateTime @default(now())
+}
+
+model DiscoveryQuery {
+  id              String   @id @default(cuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  promptHash      String   @unique
+  prompt          String
+  options         Json
+  filters         Json?
   resultRecipeIds String[]
   createdAt       DateTime @default(now())
 }

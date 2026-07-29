@@ -1,0 +1,124 @@
+@baseUrl = http://localhost:3000/api/v1
+@accessToken = PASTE_TOKEN_HERE
+
+### Health check (không cần auth)
+GET {{baseUrl}}/health
+
+
+### ==================== AUTH ====================
+
+### 1. Đăng ký
+POST {{baseUrl}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Test@1234",
+  "name": "Test User"
+}
+
+
+### 2. Đăng nhập → copy accessToken vào @accessToken ở trên
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Test@1234"
+}
+
+
+### ==================== INGREDIENTS ====================
+
+### 3. Tìm kiếm nguyên liệu (không cần auth)
+GET {{baseUrl}}/ingredients?q=trứng
+
+
+### ==================== RECIPES ====================
+
+### 4. Tìm kiếm công thức (cần auth)
+GET {{baseUrl}}/recipes
+Authorization: Bearer {{accessToken}}
+
+
+### 5. Xem chi tiết công thức (cần auth)
+GET {{baseUrl}}/recipes/PASTE_RECIPE_ID_HERE
+Authorization: Bearer {{accessToken}}
+
+
+### ==================== PANTRY (Gemini AI) ====================
+
+### 6. Gợi ý công thức từ nguyên liệu (cần auth + Gemini key)
+POST {{baseUrl}}/pantry/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "ingredients": ["trứng", "cà chua", "hành lá"]
+}
+
+
+### 7. Gợi ý với filter (cần auth + Gemini key)
+POST {{baseUrl}}/pantry/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "ingredients": ["thịt heo", "rau muống", "tỏi"],
+  "filters": {
+    "difficulty": "easy",
+    "max_time": 30
+  }
+}
+
+
+### ==================== DISCOVERY (AI prompt) ====================
+
+### 8. Tìm công thức bằng prompt tự nhiên (cần auth + Gemini key)
+POST {{baseUrl}}/discovery/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "prompt": "Tôi đang thèm: Cay. Tôi có thể nấu gì?",
+  "options": {
+    "use_preferences": true,
+    "exclude_allergies": false
+  },
+  "filters": {
+    "max_time": 30,
+    "tags": ["healthy"]
+  }
+}
+
+
+### 9. Đọc sở thích ăn uống
+GET {{baseUrl}}/users/me/preferences
+Authorization: Bearer {{accessToken}}
+
+
+### 10. Cập nhật sở thích ăn uống
+PUT {{baseUrl}}/users/me/preferences
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "spice_level": "hot",
+  "dietary_style": "vegetarian",
+  "cuisine_preferences": ["vietnamese"]
+}
+
+
+### 11. Đọc danh sách dị ứng
+GET {{baseUrl}}/users/me/allergies
+Authorization: Bearer {{accessToken}}
+
+
+### 12. Cập nhật dị ứng (thay ingredient id thật từ GET /ingredients)
+PUT {{baseUrl}}/users/me/allergies
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "ingredient_ids": ["PASTE_INGREDIENT_ID_HERE"]
+}

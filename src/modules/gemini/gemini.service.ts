@@ -8,9 +8,15 @@ import { ErrorCodes } from '../../common/codes';
 import { DomainException } from '../../common/domain.exception';
 import {
   GENERATED_RECIPES_SCHEMA,
+  DISCOVERY_PROMPT_SCHEMA,
   NORMALIZE_INGREDIENTS_SCHEMA,
 } from './gemini.schema';
-import { GeneratedRecipe, RecipeFilters } from './gemini.types';
+import {
+  DiscoveryContext,
+  DiscoveryParsedIntent,
+  GeneratedRecipe,
+  RecipeFilters,
+} from './gemini.types';
 
 @Injectable()
 export class GeminiService {
@@ -21,7 +27,7 @@ export class GeminiService {
     if (apiKey) {
       const client = new GoogleGenerativeAI(apiKey);
       this.model = client.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
       });
     } else {
       this.model = null;
@@ -71,9 +77,79 @@ export class GeminiService {
     }
   }
 
+  async parseDiscoveryPrompt(prompt: string): Promise<DiscoveryParsedIntent> {
+    const model = this.requireModel();
+    try {
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Parse this Vietnamese cooking discovery prompt into structured intent for recipe generation.
+Return JSON with:
+- "ingredients": suggested or mentioned ingredients (empty array if none)
+- "cravings": flavor/mood cravings like spicy, sweet, comfort food (empty array if none)
+- "dietary_notes": dietary constraints mentioned in the prompt (empty array if none)
+
+Prompt: ${prompt}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: DISCOVERY_PROMPT_SCHEMA,
+        },
+      });
+
+      const text = result.response.text();
+      const parsed = JSON.parse(text) as Partial<DiscoveryParsedIntent>;
+      if (
+        !Array.isArray(parsed.ingredients) ||
+        !parsed.ingredients.every((item) => typeof item === 'string') ||
+        !Array.isArray(parsed.cravings) ||
+        !parsed.cravings.every((item) => typeof item === 'string') ||
+        !Array.isArray(parsed.dietary_notes) ||
+        !parsed.dietary_notes.every((item) => typeof item === 'string')
+      ) {
+        throw new DomainException(
+          ErrorCodes.INTERNAL,
+          500,
+          'Malformed Gemini discovery parse response',
+        );
+      }
+
+      const intent: DiscoveryParsedIntent = {
+        ingredients: parsed.ingredients.map((item) => item.trim()).filter(Boolean),
+        cravings: parsed.cravings.map((item) => item.trim()).filter(Boolean),
+        dietary_notes: parsed.dietary_notes
+          .map((item) => item.trim())
+          .filter(Boolean),
+      };
+
+      if (
+        intent.ingredients.length === 0 &&
+        intent.cravings.length === 0 &&
+        intent.dietary_notes.length === 0
+      ) {
+        throw new DomainException(
+          ErrorCodes.INVALID_INPUT,
+          400,
+          'Could not parse a usable cooking intent from prompt',
+        );
+      }
+
+      return intent;
+    } catch (err) {
+      this.rethrowGeminiError(err);
+    }
+  }
+
   async generateRecipes(
     ingredients: string[],
     filters?: RecipeFilters,
+    context?: DiscoveryContext,
   ): Promise<GeneratedRecipe[]> {
     const model = this.requireModel();
     try {
@@ -83,9 +159,7 @@ export class GeminiService {
             role: 'user',
             parts: [
               {
-                text: `Generate 2-4 complete Vietnamese recipes using these ingredients: ${JSON.stringify(ingredients)}.
-Optional filters: ${JSON.stringify(filters ?? {})}.
-Return JSON with a "recipes" array matching the schema.`,
+                text: buildRecipeGenerationPrompt(ingredients, filters, context),
               },
             ],
           },
@@ -216,4 +290,36 @@ Return JSON with a "recipes" array matching the schema.`,
       'Gemini request failed',
     );
   }
+}
+
+export function buildRecipeGenerationPrompt(
+  ingredients: string[],
+  filters?: RecipeFilters,
+  context?: DiscoveryContext,
+): string {
+  const lines = [
+    `Generate 2-4 complete Vietnamese recipes using these ingredients: ${JSON.stringify(ingredients)}.`,
+    `Optional filters: ${JSON.stringify(filters ?? {})}.`,
+  ];
+
+  if (context?.original_prompt) {
+    lines.push(`Original user prompt: ${context.original_prompt}`);
+  }
+  if (context?.cravings?.length) {
+    lines.push(`User cravings: ${JSON.stringify(context.cravings)}.`);
+  }
+  if (context?.dietary_notes?.length) {
+    lines.push(`Dietary notes: ${JSON.stringify(context.dietary_notes)}.`);
+  }
+  if (context?.preferences) {
+    lines.push(`User preferences: ${JSON.stringify(context.preferences)}.`);
+  }
+  if (context?.excludeIngredients?.length) {
+    lines.push(
+      `STRICTLY DO NOT use these allergen ingredients: ${JSON.stringify(context.excludeIngredients)}.`,
+    );
+  }
+
+  lines.push('Return JSON with a "recipes" array matching the schema.');
+  return lines.join('\n');
 }
