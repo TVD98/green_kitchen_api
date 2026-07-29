@@ -69,8 +69,10 @@ model OtpSession {
 model Ingredient {
   id            String        @id @default(cuid())
   canonicalName String        @unique
+  nameEn        String
   category      String
-  aliases       String[]
+  aliasesVi     String[]      @default([])
+  aliasesEn     String[]      @default([])
   allergies     UserAllergy[]
 }
 

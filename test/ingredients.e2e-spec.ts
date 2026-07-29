@@ -64,12 +64,12 @@ describe('Ingredients (e2e)', () => {
     expect(res.body.code).toBe('ERR_TOKEN_EXPIRED');
   });
 
-  it('returns matching ingredients for q=thit when authenticated', async () => {
+  it('returns matching Vietnamese ingredients for q=thit when lang=vi', async () => {
     const token = await signupAccessToken('ingredients@example.com');
 
     const res = await request(app.getHttpServer())
       .get('/api/v1/ingredients')
-      .query({ q: 'thit' })
+      .query({ q: 'thit', lang: 'vi' })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -95,6 +95,79 @@ describe('Ingredients (e2e)', () => {
         .toLowerCase();
       expect(haystack).toContain('thit');
     }
+  });
+
+  it('returns English names for lang=en and q=gar', async () => {
+    const token = await signupAccessToken('ingredients-en@example.com');
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/ingredients')
+      .query({ q: 'gar', lang: 'en' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonical_name: 'garlic',
+        }),
+      ]),
+    );
+  });
+
+  it('does not match English aliases when lang=vi and q=g', async () => {
+    const token = await signupAccessToken('ingredients-vi-g@example.com');
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/ingredients')
+      .query({ q: 'g', lang: 'vi' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    const names = (res.body.data as Array<{ canonical_name: string }>).map(
+      (item) => item.canonical_name,
+    );
+    expect(names).not.toContain('tỏi');
+  });
+
+  it('returns tỏi for lang=vi and q=toi', async () => {
+    const token = await signupAccessToken('ingredients-vi-toi@example.com');
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/ingredients')
+      .query({ q: 'toi', lang: 'vi' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonical_name: 'tỏi',
+        }),
+      ]),
+    );
+  });
+
+  it('defaults to Vietnamese search when lang is missing', async () => {
+    const token = await signupAccessToken('ingredients-default@example.com');
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/ingredients')
+      .query({ q: 'toi' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonical_name: 'tỏi',
+        }),
+      ]),
+    );
   });
 
   it('returns empty array when q is missing or empty', async () => {
