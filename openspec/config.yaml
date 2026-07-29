@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  Tech stack: NestJS, Prisma, PostgreSQL, class-validator DTOs.
+  API prefix: /api/v1. JWT auth via existing JwtAuthGuard (except @Public routes).
+  AI: Google Gemini (gemini-2.5-flash-lite) for recipe generation and NLP.
+  Response envelope: { success, data, error? } via ResponseInterceptor.
+  Error codes: ErrorCodes enum in src/common/codes.ts; DomainException for business errors.
+  Prefer conventional commits. Co-locate e2e tests under test/.
+
+rules:
+  proposal:
+    - Always include Non-goals when relevant
+    - Note backward compatibility with existing pantry/search and recipes endpoints
+  design:
+    - New modules MUST follow NestJS module/controller/service/dto layout
+    - Gemini calls MUST go through GeminiService with structured JSON schema
+    - Cache keys MUST be stable (sorted keys, canonical normalization)
+  tasks:
+    - Break tasks into small, verifiable steps
+    - Include prisma migrate and e2e test steps where applicable
+  specs:
+    - API requirements MUST specify HTTP method, path, auth, request body, and response shape
+    - Include error scenarios (401, 400, 429, 500)
