@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Put, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUserContext } from '../auth/strategies/jwt.strategy';
 import {
@@ -29,8 +29,14 @@ export class UsersController {
   }
 
   @Get('allergies')
-  async getAllergies(@CurrentUser() user: AuthUserContext) {
-    const allergies = await this.allergiesService.getAllergies(user.userId);
+  async getAllergies(
+    @CurrentUser() user: AuthUserContext,
+    @Query('lang') lang?: string,
+  ) {
+    const allergies = await this.allergiesService.getAllergies(
+      user.userId,
+      lang,
+    );
     return { allergies };
   }
 
@@ -38,10 +44,12 @@ export class UsersController {
   async replaceAllergies(
     @CurrentUser() user: AuthUserContext,
     @Body() dto: UpdateUserAllergiesDto,
+    @Query('lang') lang?: string,
   ) {
     const allergies = await this.allergiesService.replaceAllergies(
       user.userId,
       dto.ingredient_ids,
+      lang,
     );
     return { allergies };
   }

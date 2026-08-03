@@ -11,7 +11,10 @@ export type UserPreferencesDto = {
 
 export type UserAllergyDto = {
   ingredient_id: string;
+  /** Localized display name for the requested `lang`. */
   name: string;
+  name_vi: string;
+  name_en: string;
 };
 
 export const DEFAULT_USER_PREFERENCES: UserPreferencesDto = {
